@@ -1,0 +1,82 @@
+from typing import Any
+from keras import Sequential
+from keras.src.callbacks import ReduceLROnPlateau
+from keras.src.layers import Dense, Dropout, BatchNormalization, LeakyReLU, Activation
+from numpy import ndarray, dtype, arange
+
+import matplotlib.pyplot as plt
+
+
+class NeuronNetwork:
+	def __init__(self, train_open: ndarray[Any, dtype[Any]], train_close: ndarray[Any, dtype[Any]],
+				 prediction_open: ndarray[Any, dtype[Any]], prediction_close: ndarray[Any, dtype[Any]]):
+		self.train_open = train_open
+		self.train_close = train_close
+		self.prediction_open = prediction_open
+		self.prediction_close = prediction_close
+
+		# Network settings
+		self.epoch: int = 300
+		self.model: Sequential = Sequential()
+
+	def prepare_model(self) -> None:
+		self.model.add(Dense(256, input_dim=1, activation='relu'))
+		self.model.add(Dropout(0.2))
+		self.model.add(Dense(128, input_dim=1, activation='relu'))
+		self.model.add(Dropout(0.2))
+		self.model.add(Dense(64, input_dim=1, activation='relu'))
+		self.model.add(Dropout(0.2))
+		self.model.add(Dense(32, input_dim=1, activation='relu'))
+		self.model.add(Dropout(0.2))
+		self.model.add(Dense(16, input_dim=1, activation='relu'))
+		self.model.add(Dropout(0.2))
+		self.model.add(BatchNormalization())
+		self.model.add(LeakyReLU())
+		self.model.add(Dense(1))
+		self.model.add(Activation('relu'))
+		reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.65, patience=5, min_lr=0.0001)
+		self.model.compile(optimizer='rmsprop', loss='mean_squared_error', metrics=['mean_absolute_error'])
+
+		history = self.model.fit(self.train_open, self.train_close,
+								epochs=self.epoch,
+								batch_size=4,
+								verbose=1,
+								validation_data=(self.prediction_open, self.prediction_close),
+								shuffle=True,
+								callbacks=[reduce_lr], use_multiprocessing=True)
+
+		predictions = self.model.predict(self.prediction_open)
+		predictions_close: list[float] = [predictions[i][0] for i in range(len(predictions))]
+		print(f'predictions = \n{predictions}')
+		# Plot network learning stat
+		self.__plot_learning_result(history)
+		# Plot network forecast close prices
+		self.__plot_forecast_result(predictions_close, self.prediction_close)
+
+	# Plot
+	def __plot_learning_result(self, _history) -> None:
+		arr_size = arange(0, self.epoch)
+		plt.style.use('ggplot')
+		plt.figure()
+		plt.plot(arr_size, _history.history['loss'], label='loss')
+		plt.plot(arr_size, _history.history['val_loss'], label='val_loss')
+		plt.plot(arr_size, _history.history['mean_absolute_error'], label='mean_absolute_error')
+		plt.plot(arr_size, _history.history['val_mean_absolute_error'], label='val_mean_absolute_error')
+		plt.title('Model errors for ticker prediction')
+		plt.xlabel('epoch')
+		plt.ylabel('Loss/mean_absolute_error')
+		plt.legend()
+		plt.grid(True)
+		plt.show()
+
+	def __plot_forecast_result(self, prediction_data, fact_data) -> None:
+		prices_size = arange(0, len(prediction_data))
+		plt.style.use('ggplot')
+		plt.plot(prices_size, prediction_data, label='Predictions close prices')
+		plt.plot(prices_size, fact_data, label='Fact close prices')
+		plt.title('Predictions')
+		plt.xlabel('Day index')
+		plt.ylabel('Close price')
+		plt.legend()
+		plt.grid(True)
+		plt.show()
